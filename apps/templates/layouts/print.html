@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en" style="padding-right: 10px; padding-left: 10px;">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>{% block title %}{% endblock %}</title>
+  <style>
+      html {
+          height: 100%;
+          scroll-behavior: smooth;
+      }
+
+      body {
+          min-width: 320px;
+          font-family: "Times New Roman";
+          font-size: 18px;
+          overflow-x: hidden;
+          margin: 40px 0;
+          text-align: left;
+      }
+
+      .container {
+          position: relative;
+          width: 90%;
+          max-width: 1200px;
+          margin: 0 auto;
+          text-align: justify;
+      }
+
+      .h2 {
+          font-size: 20px;
+          text-align: right;
+          margin: 0;
+          margin-left: auto;
+          font-style: italic;
+      }
+
+      .h4 {
+          font-size: 20px;
+          text-align: center;
+          margin: 0 0 40px;
+      }
+
+      .h5 {
+          font-size: 18px;
+          text-align: center;
+          margin: 20px 0;
+      }
+
+      p {
+          margin: 0;
+          text-indent: 30px
+      }
+
+      span {
+          font-weight: bold;
+      }
+
+      .green {
+          color: green;
+      }
+
+      table {
+          border-spacing: 0;
+          border-collapse: collapse;
+          margin: 40px 0;
+      }
+
+      td, th {
+          border: 1px solid #000;
+          text-align: center;
+          padding: 5px;
+      }
+
+      td:empty:after {
+          content: "\00a0";
+      }
+
+      .table-2 td {
+          text-align: left;
+      }
+
+      .new-page {
+          page-break-before: always;
+      }
+
+      .contract-section {
+          justify-content: space-between;
+      }
+
+      .contract-section:after {
+          content: "";
+          display: table;
+          clear: both;
+      }
+
+      .no-page-break {
+          page-break-inside: avoid !important;
+      }
+
+      .left-block, .right-block {
+          width: 48%;
+      }
+
+      .left-block {
+          float: left;
+      }
+
+      .right-block {
+          float: right;
+      }
+
+      .contract-bottom {
+          margin-top: 80px;
+          text-align: center;
+      }
+  </style>
+</head>
+<body>
+<div class="container">{% block content %}{% endblock %}</div>
+</body>
+</html>

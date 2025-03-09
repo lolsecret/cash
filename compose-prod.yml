@@ -1,0 +1,98 @@
+version: '3.7'
+
+volumes:
+  ktz_express_local_postgres_data: {}
+  ktz_express_local_postgres_data_backups: {}
+  letsencrypt: {}
+
+networks:
+  traefik_public:
+    external: true
+    attachable: true
+
+services:
+  traefik:
+    image: traefik:v2.11.2
+    networks:
+      - traefik_public
+      - default
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.swarmmode"
+      - "--providers.docker.network=traefik_public"
+
+      - "--accesslog"
+      - "--log"
+    ports:
+      - "81:80"
+    volumes:
+      - "letsencrypt:/letsencrypt"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  django:
+    image: $CI_REGISTRY_IMAGE:$TAG
+    env_file:
+      - ./.envs/.prod/.django
+      - ./.envs/.prod/.postgres
+    command: /start
+    networks:
+      - traefik_public
+      - default
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik_public"
+        - "traefik.http.routers.microcash-django.rule=Host(`microcash.kz`) && PathPrefix(`/api`)"
+        - "traefik.http.routers.microcash-django.entrypoints=web"
+        - "traefik.http.services.microcash-django.loadbalancer.server.port=8000"
+
+  celery:
+    image: $CI_REGISTRY_IMAGE:$TAG
+    env_file:
+      - ./.envs/.prod/.django
+      - ./.envs/.prod/.postgres
+    command: /start-celeryworker
+    networks:
+      - traefik_public
+      - default
+    deploy:
+      labels:
+        - "traefik.enable=false"
+
+  celerybeat:
+    image: $CI_REGISTRY_IMAGE:$TAG
+    env_file:
+      - ./.envs/.prod/.django
+      - ./.envs/.prod/.postgres
+    command: /start-celerybeat
+    networks:
+      - traefik_public
+      - default
+    deploy:
+      labels:
+        - "traefik.enable=false"
+
+  redis:
+    image: redis:6
+    hostname: redis
+    networks:
+      - default
+      - traefik_public
+
+  postgres:
+    image: postgres:13
+    volumes:
+      - ktz_express_local_postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: microcash
+      POSTGRES_USER: microcash
+      POSTGRES_PASSWORD: z2lak219pwexko42g8zgf5q28t942u
+    networks:
+      - traefik_public
+      - default
+    deploy:
+      labels:
+        - "traefik.enable=false"

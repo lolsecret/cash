@@ -1,0 +1,95 @@
+{% load render_bundle from webpack_loader %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>SCC</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta content="Smart Billing" name="description"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <!-- App favicon -->
+  <link rel="shortcut icon" href="/static/images/favicon.ico">
+
+  <!-- Custom -->
+  <link href="/static/css/default/custom.css?ver=0.6" rel="stylesheet" type="text/css"/>
+
+  <!-- Plugins css-->
+  {% block css_libs %}{% endblock %}
+
+  <!-- App css -->
+  <link href="/static/css/bootstrap.min.css?ver=0.6" rel="stylesheet" type="text/css" id="bs-default-stylesheet"/>
+  <link href="/static/css/app.min.css?ver=0.6" rel="stylesheet" type="text/css" id="app-default-stylesheet"/>
+
+  <link href="/static/css/bootstrap-dark.min.css?ver=0.6" rel="stylesheet" type="text/css" id="bs-dark-stylesheet"/>
+  <link href="/static/css/app-dark.min.css?ver=0.6" rel="stylesheet" type="text/css" id="app-dark-stylesheet"/>
+
+  <!-- icons -->
+  <link href="/static/css/icons.min.css?ver=0.6" rel="stylesheet" type="text/css"/>
+
+  <link href="/static/css/main.css?ver=0.6" rel="stylesheet" type="text/css"/>
+
+  {% render_bundle 'app' 'css' %}
+
+  {% block css %}{% endblock %}
+</head>
+
+<body class="loading">
+
+<!-- Begin page -->
+<div id="wrapper">
+  {% include 'layouts/partials/_navbar.html' %}
+
+  {% include 'layouts/partials/_sidebar.html' %}
+
+  <!-- ============================================================== -->
+  <!-- Start Page Content here -->
+  <!-- ============================================================== -->
+
+  <div class="content-page">
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- End Page content -->
+  <!-- ============================================================== -->
+
+</div>
+<!-- END wrapper -->
+
+<!-- Right Sidebar -->
+{% include 'layouts/partials/_right_bar.html' %}
+<!-- /Right-bar -->
+
+<!-- modals content -->
+{% block modals %}{% endblock %}
+
+<!-- Right bar overlay-->
+<div class="rightbar-overlay"></div>
+
+<!-- Vendor js -->
+<script src="/static/js/vendor.min.js?ver=0.5"></script>
+
+<!-- Vendor js -->
+<script src="/static/js/rails-ujs.min.js?ver=0.5"></script>
+
+{% block javascript_libs %}{% endblock %}
+
+<!-- App js -->
+<script src="/static/js/app.min.js?ver=0.5"></script>
+
+<!-- Inputmask js -->
+<script src="/static/js/jquery.inputmask.min.js?ver=0.5"></script>
+
+<!-- Common js -->
+<script src="/static/js/common.js?ver=0.5"></script>
+<script src="/static/js/custom.js?ver=0.5"></script>
+
+{% render_bundle 'app' 'js' %}
+
+{% block javascript %}{% endblock %}
+</body>
+</html>

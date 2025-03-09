@@ -1,0 +1,79 @@
+version: '3.7'
+
+volumes:
+  ktz_express_local_postgres_data: {}
+  ktz_express_local_postgres_data_backups: {}
+  letsencrypt: {}
+
+networks:
+  traefik_public:
+    # Allow setting it to false for testing
+    external: ${TRAEFIK_PUBLIC_NETWORK_IS_EXTERNAL-true}
+
+services:
+  traefik:
+    image: traefik:v2.11.2
+    networks:
+      - traefik_public
+      - default
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.swarmmode"
+      - "--providers.docker.network=traefik_public"
+
+      - "--accesslog"
+      - "--log"
+    ports:
+      - "81:80"
+    volumes:
+      - "letsencrypt:/letsencrypt"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+  django: &django
+    image: $CI_REGISTRY_IMAGE:$TAG
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+    environment:
+      - DATABASE_URL=psql://microcash:VNms71C8DeAXHBdUYoZmO98PNQCNnrYTCJXrSSo9YFEM222xZyCGQhAqY94EPELk@postgres:5432/microcash
+    command: /start
+    networks:
+      - traefik_public
+      - default
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik_public"
+        - "traefik.http.routers.microcash-django.rule=Host(`dev.microcash.kz`) && PathPrefix(`/api`)"
+        - "traefik.http.routers.microcash-django.entrypoints=web"
+        - "traefik.http.services.microcash-django.loadbalancer.server.port=8000"
+  celery:
+    <<: *django
+    command: /start-celeryworker
+    deploy:
+      labels:
+        - "traefik.enable=false"
+
+  celerybeat:
+    <<: *django
+    command: /start-celerybeat
+    deploy:
+      labels:
+        - "traefik.enable=false"
+
+  redis:
+    image: redis:6
+    networks:
+      - default
+      - traefik_public
+
+  postgres:
+    image: postgres:14
+    volumes:
+      - ktz_express_local_postgres_data:/var/lib/postgresql/data:Z
+      - ktz_express_local_postgres_data_backups:/backups:z
+    env_file:
+      - ./.envs/.local/.postgres
+

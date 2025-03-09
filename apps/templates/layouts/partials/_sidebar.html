@@ -1,0 +1,152 @@
+<div class="left-side-menu">
+  <!-- LOGO -->
+  <div class="logo-box">
+    <a href="{% url 'root' %}" class="logo logo-dark">
+      <span class="logo-sm">
+        <img src="/static/images/logo-sm-dark.png" alt="" height="24">
+      </span>
+      <span class="logo-lg">
+        <img src="/static/images/logo-dark.png" alt="">
+      </span>
+    </a>
+
+    <a href="{% url 'root' %}" class="logo logo-light">
+      <span class="logo-sm">
+        <img src="/static/images/logo-sm.png" alt="" height="24">
+      </span>
+      <span class="logo-lg">
+        <img src="/static/images/logo-light.png" alt="">
+      </span>
+    </a>
+  </div>
+
+  <div class="h-100" data-simplebar>
+    <!-- User box -->
+    <div class="user-box text-center">
+      <img src="/static/images/users/avatar-1.jpg" alt="user-img" title="Mat Helme"
+           class="rounded-circle avatar-md">
+      <div class="dropdown">
+        <a href="ecommerce-orders.html#" class="text-reset dropdown-toggle h5 mt-2 mb-1 d-block"
+           data-bs-toggle="dropdown">Nik Patel</a>
+        <div class="dropdown-menu user-pro-dropdown">
+
+          <!-- item-->
+          <a href="javascript:void(0);" class="dropdown-item notify-item">
+            <i class="fe-user me-1"></i>
+            <span>My Account</span>
+          </a>
+
+          <!-- item-->
+          <a href="javascript:void(0);" class="dropdown-item notify-item">
+            <i class="fe-settings me-1"></i>
+            <span>Settings</span>
+          </a>
+
+          <!-- item-->
+          <a href="javascript:void(0);" class="dropdown-item notify-item">
+            <i class="fe-lock me-1"></i>
+            <span>Lock Screen</span>
+          </a>
+
+          <!-- item-->
+          <a href="javascript:void(0);" class="dropdown-item notify-item">
+            <i class="fe-log-out me-1"></i>
+            <span>Logout</span>
+          </a>
+
+        </div>
+      </div>
+      <p class="text-reset">Admin Head</p>
+    </div>
+
+    <!--- Sidemenu -->
+    <div id="sidebar-menu">
+
+      <ul id="side-menu">
+
+        <li>
+          <a href="{% url 'root' %}" class="waves-effect">
+            <i class="ri-dashboard-line"></i>
+            <span> Главная </span>
+          </a>
+        </li>
+        {% if perms.credits.view_lead or perms.credits.change_lead %}
+          <li>
+            <a href="{% url 'leads-list' %}">
+              <i class="ri-user-add-line"></i>
+              {% if user.count_leads %}
+                <span class="badge bg-success rounded-pill float-end">{{ user.count_leads }}</span>
+              {% endif %}
+              <span> Лиды </span>
+            </a>
+          </li>
+        {% endif %}
+        {% if perms.credits.view_creditapplication or perms.credits.change_creditapplication %}
+          <li>
+            <a href="{% url 'credits-list' %}#sidebarDashboards" data-bs-toggle="collapse" aria-expanded="false"
+               aria-controls="sidebarDashboards" class="waves-effect active">
+              <i class="ri-table-line"></i>
+              {% if user.count_credit_applications %}
+                <span class="badge bg-success rounded-pill float-end">{{ user.count_credit_applications }}</span>
+              {% endif %}
+              <span> Заявки </span>
+            </a>
+            <div class="collapse" id="sidebarDashboards">
+              <ul class="nav-second-level">
+                <li>
+                  <a href="{% url 'credits-list' %}">
+                    {% if user.count_credit_applications %}
+                      <span class="badge bg-success rounded-pill float-end">{{ user.count_credit_applications }}</span>
+                    {% endif %}
+                    <span> Все заявки </span>
+                  </a>
+                </li>
+
+                {% for product in product_list %}
+                  <li>
+                    <a href="{% url 'credits-list' product=product.pk %}"
+                       {% if filter.product == product.pk %}class="active"{% endif %}>
+                      <span class="badge bg-success rounded-pill float-end">{{ product.credits_count }}</span>
+                      <span>{{ product.name }}</span>
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </li>
+        {% endif %}
+
+        <!--li><a href="{% url 'product-list' %}"> <i class="ri-terminal-box-line"></i> <span> Программы </span> </a></li-->
+
+        {% if perms.users.view_user or perms.notifications.view_smstemplate %}
+          <li>
+            <a href="#controlDashboards" data-bs-toggle="collapse" aria-expanded="false"
+               aria-controls="controlDashboards" class="waves-effect active">
+              <i class="ri-router-line"></i>
+              <span> Control </span>
+            </a>
+            <div class="collapse" id="controlDashboards">
+              <ul class="nav-second-level">
+                {% if perms.users.view_user or perms.users.change_user %}
+                  <li><a href="{% url 'users-list' %}"><span> Users </span></a></li>
+                {% endif %}
+                {% if perms.notifications.view_smstemplate or perms.notifications.change_smstemplate %}
+                  <li><a href="{% url 'sms-template-list' %}"> <span> SMS </span> </a></li>
+                {% endif %}
+              </ul>
+            </div>
+          </li>
+        {% endif %}
+
+        {% if user.is_credit_admin %}
+          <li><a href="{% url 'journal-view' %}"> <i class="ri-terminal-box-line"></i> <span>Журнал</span></a></li>
+        {% endif %}
+
+      </ul>
+
+    </div>
+    <!-- End Sidebar -->
+    <div class="clearfix"></div>
+  </div>
+  <!-- Sidebar -left -->
+</div>
