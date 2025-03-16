@@ -133,7 +133,7 @@ class ModelStatusMixin:
 
     @transition(
         status,
-        source=(CreditStatus.DECISION_CHAIRPERSON,),
+        source=(CreditStatus.IN_WORK,),
         target=CreditStatus.APPROVED
     )
     def to_approve(self):

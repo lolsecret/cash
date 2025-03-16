@@ -4,6 +4,7 @@ volumes:
   ktz_express_local_postgres_data: {}
   ktz_express_local_postgres_data_backups: {}
   letsencrypt: {}
+  media_files: {}
 
 networks:
   traefik_public:
@@ -49,6 +50,9 @@ services:
         - "traefik.http.routers.microcash-django.rule=Host(`dev.microcash.kz`) && PathPrefix(`/api`)"
         - "traefik.http.routers.microcash-django.entrypoints=web"
         - "traefik.http.services.microcash-django.loadbalancer.server.port=8000"
+    volumes:
+      - media_files:/app/media
+
   celery:
     <<: *django
     command: /start-celeryworker
@@ -76,4 +80,3 @@ services:
       - ktz_express_local_postgres_data_backups:/backups:z
     env_file:
       - ./.envs/.local/.postgres
-

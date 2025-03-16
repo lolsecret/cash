@@ -980,3 +980,16 @@ class RegistrationJournalListSerializer(serializers.ModelSerializer):
 
 class ValidateGuarantorOTPSerializer(serializers.Serializer):
     otp = serializers.CharField(write_only=True, label="OTP")
+
+
+class ProductDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ('id', 'name', 'principal_limits', 'period', 'interest_rate',
+                  'is_active', 'financing_purpose', 'financing_type')
+
+
+class RejectionReasonDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RejectionReason
+        fields = ('id', 'status', 'active', 'order')

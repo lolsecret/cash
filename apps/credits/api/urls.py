@@ -33,6 +33,10 @@ urlpatterns = [
 
     path('<int:pk>/print-forms/', views.PrintFormsView.as_view()),
 
+    path('products/<int:pk>/', views.ProductDetailView.as_view()),
+    path('rejection-reasons/<int:pk>/', views.RejectionReasonDetailView.as_view()),
+
+
     path('credit-statuses/', views.CreditStatusesListView.as_view()),
     path('products/', views.CreditProductListView.as_view()),
     path('cities/', views.CityListView.as_view()),

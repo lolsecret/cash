@@ -11,8 +11,10 @@ from apps.credits.models.application import CreditContract, CreditDecision, Cred
 
 from apps.people.models import Person, PersonalData
 
-from .models import CreditApplication, CreditDocument, Product, CreditParams, Lead, FundingPurpose
+from .models import CreditApplication, CreditDocument, Product, CreditParams, Lead, FundingPurpose, \
+    CreditApplicationPayment, CreditWithdrawal
 from .utils import num2wordskz, num2wordsfloat
+from ..accounts.models import BankCard
 
 
 class CreditApplicationShortSerializer(serializers.ModelSerializer):
@@ -318,3 +320,147 @@ class CreditApplicationPrintSerializer(serializers.ModelSerializer):
             return status[Decision.AGAINST]
 
         return status[chairman_vote]
+
+
+class VerificationFlowSerializer(serializers.Serializer):
+    """Сериализатор для данных Verigram Flow"""
+    flow_id = serializers.CharField(required=True)
+    vlink = serializers.URLField(required=True)
+    flow_status = serializers.CharField(required=False)
+    end_cause = serializers.CharField(required=False, allow_null=True)
+
+
+class CreditSigningInitSerializer(serializers.Serializer):
+    """Сериализатор для инициации подписания кредитной заявки"""
+
+    credit_id = serializers.IntegerField(required=True)
+    callback_url = serializers.URLField(required=False)
+
+    def validate_credit_id(self, value):
+        """Проверка доступности кредитной заявки для подписания"""
+        try:
+            credit = CreditApplication.objects.get(pk=value)
+        except CreditApplication.DoesNotExist:
+            raise serializers.ValidationError("Кредитная заявка не найдена")
+
+        # Проверка статуса заявки
+        valid_statuses = [CreditStatus.APPROVED, CreditStatus.TO_SIGNING]
+        if credit.status not in valid_statuses:
+            raise serializers.ValidationError(
+                f"Кредитная заявка должна быть в статусе: {', '.join(valid_statuses)}"
+            )
+
+        # Проверка наличия необходимых данных
+        if not credit.borrower:
+            raise serializers.ValidationError("У кредитной заявки отсутствует заемщик")
+
+        if not credit.borrower.iin:
+            raise serializers.ValidationError("У заемщика отсутствует ИИН")
+
+        if not credit.lead or not credit.lead.mobile_phone:
+            raise serializers.ValidationError("У заемщика отсутствует номер телефона")
+
+        if not credit.approved_params:
+            raise serializers.ValidationError("У кредитной заявки отсутствуют подтвержденные параметры")
+
+        return value
+
+
+class CreditSigningStatusSerializer(serializers.Serializer):
+    """Сериализатор для проверки статуса подписания кредитной заявки"""
+
+    flow_id = serializers.CharField(required=True)
+
+    def validate_flow_id(self, value):
+        """Проверка существования Flow"""
+        try:
+            credit = CreditApplication.objects.get(verigram_flow_id=value)
+        except CreditApplication.DoesNotExist:
+            raise serializers.ValidationError("Сеанс верификации не найден")
+
+        return value
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    """Serializer for payment details."""
+    payment_url = serializers.CharField(source='pay_link', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    contract_number = serializers.CharField(source='contract.contract_number', read_only=True)
+    credit_application_id = serializers.IntegerField(source='contract.credit.id', read_only=True)
+
+    class Meta:
+        model = CreditApplicationPayment
+        fields = [
+            'id', 'contract', 'contract_number', 'credit_application_id',
+            'amount', 'status', 'status_display', 'payment_url', 'order_id',
+            'created', 'modified'
+        ]
+        read_only_fields = ['contract', 'amount', 'order_id', 'status', 'created', 'modified']
+
+
+class PaymentCallbackSerializer(serializers.Serializer):
+    """Сериализатор для обработки колбэков от платежного шлюза."""
+    orderId = serializers.CharField(required=True)  # Изменено с order_id на orderId
+    status = serializers.IntegerField(required=True)
+    amount = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    currency = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    message = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    errorCategory = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    cascadeErrors = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    isTrustedTransaction = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    finalAmount = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    authorize_status = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    eci = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    firstName = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    lastName = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    rrn = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    card_holder = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    card_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    card_exp_month = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    card_exp_year = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    sign = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+
+class BankCardSerializer(serializers.ModelSerializer):
+    """Сериализатор для банковской карты."""
+
+    class Meta:
+        model = BankCard
+        fields = ('id', 'card_number', 'expiration_date', 'card_holder', 'card_type')
+        read_only_fields = ('id',)
+
+    def to_representation(self, instance):
+        """Маскируем номер карты при отображении."""
+        ret = super().to_representation(instance)
+        if ret.get('card_number'):
+            # Оставляем только последние 4 цифры номера карты
+            ret['card_number'] = '*' * 12 + ret['card_number'][-4:]
+        return ret
+
+
+class WithdrawalSerializer(serializers.Serializer):
+    """
+    Сериализатор для базовой информации о выводе средств.
+    """
+    id = serializers.IntegerField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    status_display = serializers.CharField(read_only=True)
+    amount = serializers.DecimalField(read_only=True, max_digits=12, decimal_places=2)
+    tokenize_form_url = serializers.URLField(read_only=True)
+    error_message = serializers.CharField(read_only=True, allow_null=True)
+    completed_at = serializers.DateTimeField(read_only=True, allow_null=True)
+
+
+class WithdrawalCallbackSerializer(serializers.Serializer):
+    """
+    Сериализатор для обработки колбэков от платежного шлюза.
+    """
+    order_id = serializers.CharField(required=True)
+    status = serializers.IntegerField(required=True)
+
+    # Дополнительные поля, которые могут быть в колбэке
+    card = serializers.DictField(required=False, allow_null=True)
+    processing_order_id = serializers.CharField(required=False, allow_null=True)
+    err = serializers.CharField(required=False, allow_null=True)
+    msg = serializers.CharField(required=False, allow_null=True)

@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 from typing import Optional
 import re
 import pdfkit
@@ -19,14 +20,22 @@ from django.views.generic import ListView, DetailView, DeleteView, FormView, Upd
 from django.forms import model_to_dict
 from django.urls import reverse
 from django_fsm import can_proceed, has_transition_perm
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
-
+from rest_framework.decorators import action
+from rest_framework.generics import CreateAPIView, RetrieveAPIView, ListAPIView
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.viewsets import GenericViewSet
+from apps.flow.integrations.external.verigram_signing import VeragramSigning
 from apps.core.models import PrintForm
 from apps.people.models import Address, AdditionalContactRelation, PersonalData, Person
 from apps.flow.models import StatusTrigger
 from apps.flow.services import Flow
 from apps.users.models import User
-from . import CreditStatus, Decision
+from . import CreditStatus, Decision, WithdrawalStatus, PaymentStatus
 from .forms import (
     SimpleLeadForm,
     CreditParamsForm,
@@ -66,9 +75,12 @@ from .models import (
     CreditDecision,
     CreditReport,
     Guarantor,
-    Comment,
+    Comment, CreditApplicationPayment, CreditWithdrawal, CreditContract,
 )
 from . import serializers
+from .serializers import CreditSigningInitSerializer, CreditSigningStatusSerializer, \
+    PaymentSerializer, PaymentCallbackSerializer, WithdrawalSerializer, WithdrawalCallbackSerializer
+from .services.payment_service import PaymentService, PaymentGatewayError, WithdrawalService
 from .utils import FinanceReportFactory
 
 logger = logging.getLogger(__name__)
@@ -913,3 +925,423 @@ def print_forms_pdf_view(request, pk, form_name):
     response = HttpResponse(pdf, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{form_name}-{pk}.pdf"'
     return response
+
+
+class CreditSigningViewSet(GenericViewSet):
+    """ViewSet для подписания кредитной заявки через Verigram Flow"""
+
+    @swagger_auto_schema(
+        method='post',
+        responses={200: openapi.Response("Signing initiated")}
+    )
+    @action(detail=True, methods=['post'])
+    def init_signing(self, request, pk=None):
+        """Инициализация процесса подписания кредитной заявки"""
+
+        credit = get_object_or_404(CreditApplication, pk=pk)
+
+        try:
+            # Находим активный сервис Verigram
+            service = VeragramSigning.find_active_service()
+
+            # Инициируем процесс подписания
+            verigram_service = VeragramSigning(instance=credit, service_model=service)
+            result = verigram_service.run()
+
+            # Если статус заявки позволяет, переводим её в статус "На подписании"
+            if credit.status == CreditStatus.APPROVED:
+                credit.to_signing()
+                credit.save()
+
+            # Возвращаем URL для Flow
+            return Response({
+                "flow_id": credit.verigram_flow_id,
+                "vlink": credit.verigram_flow_url,
+                "status": "success"
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.exception(f"Error initializing signing flow: {str(e)}")
+            return Response(
+                {"error": "Произошла ошибка при инициализации процесса подписания"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @swagger_auto_schema(
+        method='post',
+        request_body=CreditSigningStatusSerializer,
+        responses={200: openapi.Response("Signing initiated")}
+    )
+    @action(detail=False, methods=['post'])
+    def check_signing_status(self, request):
+        """Проверка статуса подписания кредитной заявки"""
+        serializer = CreditSigningStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        flow_id = serializer.validated_data['flow_id']
+
+        try:
+            # Находим кредитную заявку по flow_id
+            credit = get_object_or_404(CreditApplication, verigram_flow_id=flow_id)
+            service = VeragramSigning.find_active_service()
+            service_instance = VeragramSigning(instance=credit, service_model=service)
+
+            result = service_instance.get_flow_result(flow_id)
+
+            # Если Flow успешно завершен, обрабатываем подписанный документ
+            if result.get('flow_status') == 'pass' and result.get('end_cause') == 'completed':
+                VeragramSigning.process_signed_document(credit, flow_id)
+
+            return Response({
+                "flow_status": result.get('flow_status'),
+                "end_cause": result.get('end_cause'),
+                "credit_status": credit.status,
+                "is_signed": credit.is_signed
+            })
+
+        except Exception as e:
+            logger.exception(f"Error checking signing status: {str(e)}")
+            return Response(
+                {"error": "Произошла ошибка при проверке статуса подписания"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
+    def callback(self, request, pk=None):
+        """Обработчик вебхуков от Verigram Flow"""
+        try:
+            credit = get_object_or_404(CreditApplication, pk=pk)
+            flow_id = credit.verigram_flow_id
+
+            if not flow_id:
+                return Response(
+                    {"error": "Не найден Flow ID для данной кредитной заявки"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Обрабатываем подписанный документ
+            success = VeragramSigning.process_signed_document(credit, flow_id)
+
+            if success:
+                return Response({"status": "success"})
+            else:
+                return Response(
+                    {"error": "Ошибка при обработке подписанного документа"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        except Exception as e:
+            logger.exception(f"Error processing callback: {str(e)}")
+            return Response(
+                {"error": "Произошла ошибка при обработке обратного вызова"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CreatePaymentView(CreateAPIView):
+    """Create a payment for a credit application."""
+    serializer_class = PaymentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        """
+        Handle the payment creation request.
+
+        Creates a payment for the specified credit application using
+        the approved principal amount.
+        """
+        # Get the credit application ID from the URL
+        credit_application_id = kwargs.get('pk')
+
+        # Fetch the credit application or return 404
+        credit_application = get_object_or_404(
+            CreditApplication,
+            pk=credit_application_id
+        )
+
+        # Validate that the user has permission to make a payment on this application
+        user = request.user
+        if hasattr(user, 'person') and credit_application.borrower != user.person:
+            return Response(
+                {"detail": "You do not have permission to make payments for this credit application."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Use approved_params.principal as the payment amount
+        amount = Decimal(credit_application.approved_params.principal)
+
+        # Create the payment
+        try:
+            # Create payment object
+            payment = CreditApplicationPayment.objects.create(
+                contract=credit_application.contract,
+                amount=amount,
+                person=user.person if hasattr(user, 'person') else None
+            )
+
+            # Generate payment link
+            PaymentService.create_payment_link(payment)
+
+            # Return the created payment with payment link
+            return Response(
+                self.get_serializer(payment).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to create payment for credit application {credit_application_id}: {e}")
+
+            # Return appropriate error response
+            if isinstance(e, PaymentGatewayError):
+                return Response(
+                    {"detail": str(e)},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+            else:
+                return Response(
+                    {"detail": "An error occurred while creating the payment."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+
+class PaymentDetailView(RetrieveAPIView):
+    """Get payment details including current status."""
+    queryset = CreditApplicationPayment.objects.all()
+    serializer_class = PaymentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve payment details, updating the status if needed."""
+        payment = self.get_object()
+
+        # Check if the payment belongs to the current user
+        if payment.person and payment.person != request.user.person:
+            return Response(
+                {"detail": "You do not have permission to view this payment."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Update payment status from payment gateway
+        try:
+            PaymentService.check_payment_status(payment)
+        except PaymentGatewayError as e:
+            logger.warning(f"Could not update payment status: {e}")
+            # Continue anyway, we'll just return the current status
+
+        # Return updated payment data
+        serializer = self.get_serializer(payment)
+        return Response(serializer.data)
+
+
+class UserPaymentsListView(ListAPIView):
+    """List all payments for the current user."""
+    serializer_class = PaymentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Return only payments related to the current user."""
+        user = self.request.user
+        if hasattr(user, 'person'):
+            return CreditApplicationPayment.objects.filter(
+                person=user.person
+            ).select_related('contract').order_by('-created')
+        return CreditApplicationPayment.objects.none()
+
+
+class PaymentCallbackView(APIView):
+    """Webhook для обработки колбэков от платежной системы."""
+    permission_classes = [AllowAny]  # Нет необходимости в аутентификации для вебхука
+
+    def post(self, request, *args, **kwargs):
+        """Обработка колбэка от платежной системы."""
+        logger.info(f"Получен колбэк от платежной системы: {request.data}")
+
+        serializer = PaymentCallbackSerializer(data=request.data)
+        if not serializer.is_valid():
+            logger.error(f"Некорректные данные колбэка: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Извлекаем проверенные данные
+        order_id = serializer.validated_data.get('orderId')  # Изменено с order_id на orderId
+        gateway_status = serializer.validated_data.get('status')
+
+        # Находим платеж по order_id
+        try:
+            payment = CreditApplicationPayment.objects.get(order_id=order_id)
+        except CreditApplicationPayment.DoesNotExist:
+            logger.error(f"Платеж с order_id={order_id} не найден")
+            return Response(
+                {"detail": "Платеж не найден"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Обновляем статус платежа
+        try:
+            # Сохраняем необработанные данные колбэка
+            payment.payment_response = serializer.validated_data
+            payment.save(update_fields=['payment_response'])
+
+            # Мапинг статусов платежной системы на наши статусы
+            status_mapping = {
+                2: PaymentStatus.PAID,  # Success -> Оплачено
+                1: PaymentStatus.IN_PROGRESS,  # Processing -> В процессе
+                0: PaymentStatus.WAITING,  # Waiting for redirect -> В ожидании
+                -1: PaymentStatus.PAYMENT_ERROR  # Fail -> Ошибка оплаты
+            }
+
+            # Если статус содержится в нашем маппинге, обновляем статус платежа
+            if gateway_status in status_mapping:
+                new_status = status_mapping[gateway_status]
+                old_status = payment.status
+
+                if new_status != old_status:
+                    payment.status = new_status
+                    payment.save(update_fields=['status'])
+
+                    logger.info(
+                        f"Статус платежа {payment.id} обновлен: {old_status} -> {new_status}"
+                    )
+
+                    # Если платеж теперь оплачен, можем запустить доп. действия
+                    if new_status == PaymentStatus.PAID:
+                        # Обработка успешного платежа
+                        # Например, обновление статуса контракта и т.д.
+                        pass
+            else:
+                logger.warning(f"Неизвестный статус платежа: {gateway_status}")
+
+            # Логируем колбэк
+            logger.info(
+                f"Колбэк обработан для order_id={order_id}, "
+                f"статус={gateway_status}, payment_id={payment.id}"
+            )
+
+            return Response({"status": "success"})
+
+        except Exception as e:
+            logger.error(f"Ошибка обработки колбэка платежа: {e}", exc_info=True)
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class CreateWithdrawalView(APIView):
+    """
+    API для создания вывода средств и получения URL для токенизации карты.
+
+    Создает запись о выводе средств для указанного кредитного договора
+    и возвращает URL формы для токенизации карты.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, contract_id):
+        """
+        Создать запрос на вывод средств и вернуть URL формы токенизации.
+        """
+        # Проверяем, что кредитный договор принадлежит текущему пользователю
+        contract = get_object_or_404(CreditContract, id=contract_id)
+
+        if contract.borrower != request.user.person:
+            return Response(
+                {"detail": "У вас нет прав для создания вывода средств по этому договору."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            # Создаем запрос на вывод средств и получаем URL формы
+            withdrawal, tokenize_url = WithdrawalService.create_tokenize_form(contract_id)
+
+            # Формируем ответ
+            response_data = {
+                "id": withdrawal.id,
+                "status": withdrawal.status,
+                "amount": str(withdrawal.amount),
+                "tokenize_form_url": tokenize_url
+            }
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
+
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception as e:
+            logger.error(f"Ошибка при создании вывода средств: {e}", exc_info=True)
+            return Response(
+                {"detail": "Произошла ошибка при создании запроса на вывод средств."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class WithdrawalStatusView(APIView):
+    """
+    API для проверки статуса вывода средств.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, withdrawal_id):
+        """
+        Получить текущий статус вывода средств.
+        """
+        withdrawal = get_object_or_404(CreditWithdrawal, id=withdrawal_id)
+
+        # Проверяем права доступа
+        if withdrawal.contract.borrower != request.user.person:
+            return Response(
+                {"detail": "У вас нет прав для просмотра этого вывода средств."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Возвращаем статус
+        return Response({
+            "id": withdrawal.id,
+            "status": withdrawal.status,
+            "status_display": withdrawal.get_status_display(),
+            "amount": str(withdrawal.amount),
+            "error_message": withdrawal.error_message,
+            "completed_at": withdrawal.completed_at
+        })
+
+
+class WithdrawalCallbackView(APIView):
+    """
+    Обработка колбэков от платежной системы по выводу средств.
+    """
+    permission_classes = []  # Колбэк не требует аутентификации
+
+    def post(self, request):
+        """
+        Обработать колбэк от платежной системы.
+        """
+        serializer = WithdrawalCallbackSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Извлекаем данные
+        order_id = serializer.validated_data.get('order_id')
+        status_code = serializer.validated_data.get('status')
+
+        # Обрабатываем колбэк
+        try:
+            success = WithdrawalService.process_callback(
+                order_id=order_id,
+                status=status_code,
+                data=serializer.validated_data
+            )
+
+            if success:
+                return Response({"status": "success"})
+            else:
+                return Response(
+                    {"detail": "Ошибка обработки колбэка"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        except Exception as e:
+            logger.error(f"Ошибка обработки колбэка: {e}", exc_info=True)
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

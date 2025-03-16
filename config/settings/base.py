@@ -8,7 +8,7 @@ import environ
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 # apps/
-APPS_DIR = BASE_DIR / "apps"
+APPS_DIR = BASE_DIR
 env = environ.Env()\
 
 SECRET_KEY = env(
@@ -124,13 +124,15 @@ THIRD_PARTY_APPS = [
     # "allauth.socialaccount",
     "django_celery_beat",
     "rest_framework",
-    "rest_framework.authtoken",
     'rest_framework_simplejwt',
+    'rest_framework.authtoken',
     "corsheaders",
     "phonenumber_field",  # noqa
     "tinymce",
     "drf_yasg",
     "django_json_widget",
+    "adminsortable2",
+    "sequences.apps.SequencesConfig",
 ]
 
 LOCAL_APPS = [
@@ -369,6 +371,7 @@ ACCOUNT_ALLOW_REGISTRATION = env.bool("DJANGO_ACCOUNT_ALLOW_REGISTRATION", True)
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         # 'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.BasicAuthentication',
         'apps.accounts.authentication.CustomJSONWebTokenAuthentication',
     ),
@@ -427,13 +430,15 @@ SWAGGER_SETTINGS = {
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
-CREATE_PAYMENT_FORM_URL = os.getenv("CREATE_PAYMENT_FORM_URL", "https://api-gateway.smartcore.pro/initPayment")
 CREATE_PAYMENT_WITHDRAWAL_URL = os.getenv(
     "CREATE_PAYMENT_WITHDRAWAL_URL", "https://chd-api.smartcore.pro/withdrawal/init"
 )
-MERCHANT_KEY = os.getenv("MERCHANT_KEY", "microcash")
-MERCHANT_SECRET = os.getenv("MERCHANT_SECRET", "6YW01b36kq8uu2q41n17CPRi2RRt3xJ3")
-
+MERCHANT_KEY = os.getenv("MERCHANT_KEY", "MicroCash")
+MERCHANT_SECRET = os.getenv("MERCHANT_SECRET", "VTwosV2nk6MtknSNy80qNlCgPsjhS41M")
+MERCHANT_SITE_URL = os.getenv("MERCHANT_SITE_URL", "https://microcash.kz")
+CREATE_PAYMENT_FORM_URL = os.getenv("CREATE_PAYMENT_FORM_URL", "https://api-gateway.smartcore.pro/initPayment")
+CHECK_PAYMENT_STATUS_URL = os.getenv("CHECK_PAYMENT_STATUS_URL", "https://api-gateway.smartcore.pro/check")
+PAYMENT_CALLBACK_URL = os.getenv("PAYMENT_CALLBACK_URL", "https://dev.microcash.kz/api/credits/payments/callback/")
 
 PAYMENT_1C_WSDL = os.getenv("PAYMENT_1C_WSDL", default="")
 PAYMENT_1C_USERNAME = os.getenv("PAYMENT_1C_USERNAME", default="")
@@ -451,9 +456,12 @@ SWAGGER_BASE_URL = os.getenv('SWAGGER_BASE_URL', 'https://dev.microcash.kz/api')
 
 
 # Verigram Biometry
-API_KEY = "bkecn0J06bbHL1wKpC4HELhHg5XIJUQU"
-API_SECRET = "4001a9f878698c7521cac734442bc7da"
+API_KEY = os.getenv("API_KEY", "RPLCHDCEIRZNSXWXMHV4JY")
+API_SECRET = os.getenv("API_SECRET", "XB4E8Q8hsFK8DB3k9M6nhzMAT3sPVVVAsCNCnPZy")
 VERIGRAM_TOKEN_URL = os.getenv("VERIGRAM_TOKEN_URL", "https://services.verigram.cloud")
 VERIGRAM_URL = os.getenv("VERIGRAM_URL", "https://services.verigram.ai:8443/s/veriface")
 VERIGRAM_BIOMETRY_MIN_SCORE = os.getenv("VERIGRAM_BIOMETRY_MIN_SCORE", 50)
 BIOMETRY_ATTEMPTS_COUNT = os.getenv("BIOMETRY_ATTEMPTS_COUNT", 3)
+VERIGRAM_BASE_URL = os.getenv("VERIGRAM_BASE_URL", "https://services.verigram.cloud")
+COMPANY_LOGO_URL = os.getenv("COMPANY_LOGO_URL", "https://dev.microcash.kz/api/static/images/logo.jpg")
+BASE_URL = os.getenv("BASE_URL", "https://dev.microcash.kz/api")

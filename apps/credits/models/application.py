@@ -56,6 +56,7 @@ from apps.notifications.services import send_sms_find_template
 from apps.people.models import Person, PersonalData
 from apps.flow.mixins import ServiceHistoryMixin
 from apps.users.models import User
+from .application_fields import CreditApplicationVerigram
 from .product import Product
 from apps.accounts.models import Profile
 from apps.flow import RejectReason
@@ -381,7 +382,7 @@ class Lead(TimeStampedModel, UUIDModel, ServiceHistoryMixin):
         return credit_report
 
 
-class CreditApplication(TimeStampedModel, ServiceHistoryMixin):
+class CreditApplication(TimeStampedModel, ServiceHistoryMixin, CreditApplicationVerigram):
     class Meta:
         verbose_name = 'Кредитная заявка'
         verbose_name_plural = '2. Кредитные заявки'
@@ -661,8 +662,7 @@ class CreditApplication(TimeStampedModel, ServiceHistoryMixin):
 
     @transition(
         status,
-        source=(CreditStatus.DECISION,
-                CreditStatus.DECISION_CHAIRPERSON,
+        source=(CreditStatus.IN_WORK,
                 CreditStatus.IN_WORK_CREDIT_ADMIN),
         target=CreditStatus.APPROVED
     )
@@ -714,12 +714,22 @@ class CreditApplication(TimeStampedModel, ServiceHistoryMixin):
     )
     def issuance(self):
         """Кредит отправлен на выдачу, запустим фоновое задание создание клиента и контракта"""
+        from ..services.payment_service import WithdrawalService
+
         if not self.is_signed:
             raise ValueError("Кредитная заявка %s не подписана" % self.pk)
+        try:
+            success = WithdrawalService.initiate_withdrawal_after_contract_sign(self.id)
+            if success:
+                logger.info(f"Автоматически инициирован вывод средств для договора {self.id}")
+            else:
+                logger.warning(f"Не удалось автоматически инициировать вывод средств для договора {self.id}")
+        except Exception as e:
+            logger.error(f"Ошибка при автоматическом инициировании вывода средств: {e}", exc_info=True)
 
-        if self.way_type == CreditWayType.ONLINE:
-            from apps.credits.tasks import generate_and_save_credit_documents
-            generate_and_save_credit_documents.delay(self.pk)
+        # if self.way_type == CreditWayType.ONLINE:
+        #     from apps.credits.tasks import generate_and_save_credit_documents
+        #     generate_and_save_credit_documents.delay(self.pk)
 
     @transition(
         status,

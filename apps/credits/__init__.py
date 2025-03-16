@@ -30,6 +30,16 @@ class PaymentStatus(TextChoices):
     PAID = 'PAID', _('Оплачено')
     CANCELED = 'CANCELED', _('Отменен при оплате')
     PAYMENT_ERROR = 'PAYMENT_ERROR', _('Ошибка оплаты')
+    IN_PROGRESS = 'IN_PROGRESS', _("В процессе")
+    WAITING = 'WAITING', _("В ожидании")
+
+
+class WithdrawalStatus(TextChoices):
+    PENDING = 'PENDING', 'Ожидает обработки'
+    PROCESSING = 'PROCESSING', 'В процессе'
+    COMPLETED = 'COMPLETED', 'Завершен'
+    FAILED = 'FAILED', 'Ошибка'
+    CANCELED = 'CANCELED', 'Отменен'
 
 
 class CreditStatus(TextChoices):

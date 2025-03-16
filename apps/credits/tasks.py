@@ -72,6 +72,17 @@ def generate_and_save_credit_documents(credit_id: int) -> None:
         )
 
 
-@shared_task
-def check_payment_status_periodic():
-    PaymentService.check_payment_status_and_send_callback()
+@celery_app.task
+def check_payments_status():
+    """
+    Periodic task to check payment statuses and update them in the database.
+
+    This task should be scheduled to run at regular intervals (e.g., every 5 minutes)
+    to keep payment statuses up to date.
+    """
+    logger.info("Starting periodic payment status check")
+    try:
+        PaymentService.check_payment_status_and_send_callback()
+        logger.info("Payment status check completed successfully")
+    except Exception as e:
+        logger.error(f"Error during payment status check: {e}", exc_info=True)

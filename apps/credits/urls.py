@@ -1,6 +1,12 @@
 from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 
 from . import views
+from .views import CreditSigningViewSet, UserPaymentsListView, CreatePaymentView, PaymentDetailView, \
+    PaymentCallbackView, CreateWithdrawalView, WithdrawalStatusView, WithdrawalCallbackView
+
+router = DefaultRouter()
+router.register(r'signing', CreditSigningViewSet, basename='credit-signing')
 
 urlpatterns = [
     path('products/', views.ProductListView.as_view(), name='product-list'),
@@ -30,5 +36,26 @@ urlpatterns = [
     path('<int:pk>/print-form/<str:form_name>.html', views.print_forms_view, name='credit-print-form'),
     path('<int:pk>/print-form/<str:form_name>.pdf', views.print_forms_pdf_view, name='credit-print-form-pdf'),
 
+    path('payments/', UserPaymentsListView.as_view(), name='payment-list'),
+    path('<int:pk>/payment/', CreatePaymentView.as_view(), name='credit-payment-create'),
+    path('payments/<int:pk>/', PaymentDetailView.as_view(), name='payment-detail'),
+    path('payments/callback/', PaymentCallbackView.as_view(), name='payment-callback'),
+
+    # Создание вывода средств и получение URL формы токенизации
+    path('contracts/<int:contract_id>/withdrawal/',
+         CreateWithdrawalView.as_view(),
+         name='contract-withdrawal-create'),
+
+    # Проверка статуса вывода средств
+    path('withdrawals/<int:withdrawal_id>/',
+         WithdrawalStatusView.as_view(),
+         name='withdrawal-status'),
+
+    # Колбэк для уведомлений от платежной системы
+    path('withdrawal/callback/',
+         WithdrawalCallbackView.as_view(),
+         name='withdrawal-callback'),
+
+    path('', include(router.urls)),
     path('api/', include('apps.credits.api.urls')),
 ]

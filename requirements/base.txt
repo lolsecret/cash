@@ -22,7 +22,7 @@ django-mptt
 django-solo
 django-fsm==2.7.1
 django-imagekit==4.1.0
-django-sequences
+django-sequences==3.0
 django-json-widget==1.1.1
 django-admin-sortable2  # Remove version constraint for compatibility with Django 4.2
 django-tinymce==3.4.0

@@ -55,6 +55,7 @@ from apps.credits.api.tasks import generate_and_save_guarantor_document
 from .filters import LeadListFilter, CreditListFilter
 from .permissions import BaseAuthPermission
 from . import serializers
+from .serializers import RejectionReasonDetailSerializer, ProductDetailSerializer
 from ...notifications.models import OTP
 from ...notifications.services import verify_otp, send_sms_find_template
 
@@ -559,3 +560,16 @@ class RegistrationJournalsExportView(BaseExportView):
         )
 
         return qs
+
+
+class ProductDetailView(RetrieveUpdateAPIView):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = ProductDetailSerializer
+    queryset = Product.objects.all()
+
+
+class RejectionReasonDetailView(RetrieveUpdateAPIView):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = RejectionReasonDetailSerializer
+    queryset = RejectionReason.objects.all()
+

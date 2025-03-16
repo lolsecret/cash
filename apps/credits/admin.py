@@ -402,6 +402,7 @@ class ApplicationFaceMatchPhotoAdmin(admin.ModelAdmin):
 
 admin.site.register(EmailNotification, EmailNotificationAdmin)
 admin.site.register([Partner])
+admin.site.register(CreditDocument)
 admin.site.register(Channel, ChannelAdmin)
 admin.site.register(Product, ProductAdmin)
 admin.site.register(RejectionReason, RejectionReasonAdmin)

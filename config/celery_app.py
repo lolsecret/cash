@@ -15,3 +15,10 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 
 # Load task modules from all registered Django app configs.
 app.autodiscover_tasks()
+
+CELERY_BEAT_SCHEDULE = {
+    'check-payments-status': {
+        'task': 'apps.credits.tasks.payment_tasks.check_payments_status',
+        'schedule': 300.0,  # every 5 minutes
+    },
+}
