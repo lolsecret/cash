@@ -154,7 +154,7 @@ class CreditParamsSerializer(serializers.ModelSerializer):
 class CreditProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
-        fields = ('id', 'name')
+        fields = ('id', 'name', 'financing_purpose', 'financing_type', 'interest_rate', 'period', 'is_active', 'principal_limits')
 
 
 class CitySerializer(serializers.ModelSerializer):
@@ -195,7 +195,7 @@ class DocumentGroupSerializer(serializers.ModelSerializer):
 class RejectionReasonSerializer(serializers.ModelSerializer):
     class Meta:
         model = RejectionReason
-        fields = ('id', 'status')
+        fields = ('id', 'status', 'active', 'order')
 
 
 class BusinessInfoSerializer(serializers.ModelSerializer):

@@ -158,7 +158,10 @@ MIGRATION_MODULES = {"sites": "apps.contrib.sites.migrations"}
 # AUTHENTICATION
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#authentication-backends
-AUTHENTICATION_BACKENDS = ['apps.users.authenticate.CustomUserModelBackend']
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'apps.users.authenticate.CustomUserModelBackend'
+]
 # https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
 AUTH_USER_MODEL = "users.User"
 # https://docs.djangoproject.com/en/dev/ref/settings/#login-redirect-url

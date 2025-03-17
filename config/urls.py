@@ -30,7 +30,7 @@ schema_view = get_schema_view(
         description="Microcash API",
     ),
     public=True,
-    url=settings.SWAGGER_BASE_URL,
+    # url=settings.SWAGGER_BASE_URL,
 )
 
 

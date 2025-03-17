@@ -42,7 +42,8 @@ def create_lead(validated_data: Dict[str, Any], borrower_data: PersonalData) -> 
         branch=Branch.objects.first(),
         cpa_transaction_id=validated_data.get('cpa_transaction_id'),
         utm_source=validated_data.get('utm_source'),
-        utm_params=validated_data.get('utm'),
+        wm_id=validated_data.get('wm_id'),
+        # utm_params=validated_data.get('utm'),
         city=validated_data.get('city', City.objects.first())
     )
 

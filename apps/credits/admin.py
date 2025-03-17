@@ -400,6 +400,53 @@ class ApplicationFaceMatchPhotoAdmin(admin.ModelAdmin):
     document_photo_exists.boolean = True
 
 
+from django.contrib import admin
+from apps.credits.models import (
+    CreditApplication,
+    CreditContract,
+    CreditDocument,
+    CreditParams,
+    Lead,
+    Product,
+    CreditWithdrawal,  # Добавляем модель CreditWithdrawal
+    CreditApplicationPayment
+)
+
+
+# Существующие классы ModelAdmin...
+
+class CreditWithdrawalAdmin(admin.ModelAdmin):
+    """Админка для управления выводами средств"""
+    list_display = [
+        'id',
+        'contract',
+        'amount',
+        'status',
+        'created',
+        'completed_at',
+        'order_id'
+    ]
+    list_filter = ['status']
+    search_fields = ['order_id', 'contract__contract_number']
+    readonly_fields = [
+        'contract',
+        'amount',
+        'status',
+        'created',
+        'modified',
+        'completed_at',
+        'order_id',
+        'withdrawal_response',
+        'error_message'
+    ]
+
+    def has_add_permission(self, request):
+        return False  # Запрещаем создание через админку
+
+    def has_delete_permission(self, request, obj=None):
+        return False  # Запрещаем удаление через админку
+
+admin.site.register(CreditWithdrawal, CreditWithdrawalAdmin)
 admin.site.register(EmailNotification, EmailNotificationAdmin)
 admin.site.register([Partner])
 admin.site.register(CreditDocument)

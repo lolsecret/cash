@@ -52,7 +52,7 @@ from apps.people.managers import PersonInfoFromIin
 from apps.users.permissions import CreditAdminPermission
 from apps.credits.api.tasks import generate_and_save_guarantor_document
 
-from .filters import LeadListFilter, CreditListFilter
+from .filters import LeadListFilter, CreditListFilter, RejectionReasonFilter
 from .permissions import BaseAuthPermission
 from . import serializers
 from .serializers import RejectionReasonDetailSerializer, ProductDetailSerializer
@@ -74,7 +74,7 @@ class CreditProductListView(ListAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.CreditProductSerializer
     queryset = Product.objects.order_by('name')
-
+    pagination_class = CustomPagination
 
 class CityListView(ListAPIView):
     permission_classes = (IsAuthenticated,)
@@ -109,7 +109,9 @@ class RejectionReasonListView(ListAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = serializers.RejectionReasonSerializer
     queryset = RejectionReason.objects.filter(active=True).order_by('order')
-
+    pagination_class = CustomPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = RejectionReasonFilter
 
 class ParseIINView(APIView):
     permission_classes = (IsAuthenticated,)
@@ -572,4 +574,3 @@ class RejectionReasonDetailView(RetrieveUpdateAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = RejectionReasonDetailSerializer
     queryset = RejectionReason.objects.all()
-

@@ -39,6 +39,7 @@ class CreditRequestSerializer(serializers.Serializer):
     agree_personal_data = serializers.BooleanField()
     agree_contact_details = serializers.BooleanField()
     utm_source = serializers.CharField(allow_null=True)
+    wm_id = serializers.CharField(allow_null=True, required=False)
     utm = serializers.DictField(required=False, allow_null=True)
 
     def validate_agree_personal_data(self, value):

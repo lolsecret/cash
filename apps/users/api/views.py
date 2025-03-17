@@ -1,3 +1,4 @@
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.generics import ListAPIView, RetrieveAPIView, CreateAPIView, RetrieveUpdateDestroyAPIView, \
@@ -9,7 +10,10 @@ from rest_framework.views import APIView
 from apps.users.models import User
 
 from . import serializers
-from .serializers import UserSerializer
+from .filters import UserListFilter
+from .serializers import UserSerializer, EmailAuthTokenSerializer
+from ...core.api.pagination import CustomPagination
+
 
 class ProfileView(APIView):
     permission_classes = (IsAuthenticated,)
@@ -34,7 +38,9 @@ class UserListView(ListCreateAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = UserSerializer
     queryset = User.objects.all()
-
+    pagination_class = CustomPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = UserListFilter
 
 class UserDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = (IsAuthenticated,)
@@ -52,6 +58,8 @@ class UserDetailView(RetrieveUpdateDestroyAPIView):
 
 
 class CustomAuthToken(ObtainAuthToken):
+    serializer_class = EmailAuthTokenSerializer
+
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)

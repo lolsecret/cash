@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from . import views
 from .views import CreditSigningViewSet, UserPaymentsListView, CreatePaymentView, PaymentDetailView, \
-    PaymentCallbackView, CreateWithdrawalView, WithdrawalStatusView, WithdrawalCallbackView
+    PaymentCallbackView, WithdrawalCreateView
 
 router = DefaultRouter()
 router.register(r'signing', CreditSigningViewSet, basename='credit-signing')
@@ -41,20 +41,10 @@ urlpatterns = [
     path('payments/<int:pk>/', PaymentDetailView.as_view(), name='payment-detail'),
     path('payments/callback/', PaymentCallbackView.as_view(), name='payment-callback'),
 
-    # Создание вывода средств и получение URL формы токенизации
+    # Создание и инициация вывода средств
     path('contracts/<int:contract_id>/withdrawal/',
-         CreateWithdrawalView.as_view(),
-         name='contract-withdrawal-create'),
-
-    # Проверка статуса вывода средств
-    path('withdrawals/<int:withdrawal_id>/',
-         WithdrawalStatusView.as_view(),
-         name='withdrawal-status'),
-
-    # Колбэк для уведомлений от платежной системы
-    path('withdrawal/callback/',
-         WithdrawalCallbackView.as_view(),
-         name='withdrawal-callback'),
+         WithdrawalCreateView.as_view(),
+         name='contract-withdrawal'),
 
     path('', include(router.urls)),
     path('api/', include('apps.credits.api.urls')),

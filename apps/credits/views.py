@@ -1225,123 +1225,76 @@ class PaymentCallbackView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class CreateWithdrawalView(APIView):
-    """
-    API для создания вывода средств и получения URL для токенизации карты.
 
-    Создает запись о выводе средств для указанного кредитного договора
-    и возвращает URL формы для токенизации карты.
-    """
+class WithdrawalCreateView(APIView):
+    """API для создания и инициации вывода средств"""
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['payment_method_id', 'payment_method_type'],
+            properties={
+                'payment_method_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'payment_method_type': openapi.Schema(type=openapi.TYPE_STRING, enum=['card', 'account'])
+            }
+        ),
+        responses={201: 'Вывод средств создан'}
+    )
     def post(self, request, contract_id):
         """
-        Создать запрос на вывод средств и вернуть URL формы токенизации.
+        Создает и инициирует вывод средств для указанного контракта.
+
+        Request body:
+        {
+            "payment_method_id": 123,  # ID платежного метода
+            "payment_method_type": "card"  # Тип платежного метода ('card' или 'account')
+        }
         """
-        # Проверяем, что кредитный договор принадлежит текущему пользователю
-        contract = get_object_or_404(CreditContract, id=contract_id)
-
-        if contract.borrower != request.user.person:
-            return Response(
-                {"detail": "У вас нет прав для создания вывода средств по этому договору."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
         try:
-            # Создаем запрос на вывод средств и получаем URL формы
-            withdrawal, tokenize_url = WithdrawalService.create_tokenize_form(contract_id)
+            # Получаем данные из запроса
+            payment_method_id = request.data.get('payment_method_id')
+            payment_method_type = request.data.get('payment_method_type')
 
-            # Формируем ответ
-            response_data = {
-                "id": withdrawal.id,
-                "status": withdrawal.status,
-                "amount": str(withdrawal.amount),
-                "tokenize_form_url": tokenize_url
-            }
+            if not payment_method_id or not payment_method_type:
+                return Response(
+                    {"detail": "Необходимо указать payment_method_id и payment_method_type"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-            return Response(response_data, status=status.HTTP_201_CREATED)
+            # Проверяем, что контракт принадлежит пользователю
+            contract = get_object_or_404(CreditContract, id=contract_id)
+            if contract.borrower != request.user.person:
+                return Response(
+                    {"detail": "У вас нет прав для вывода средств по этому контракту"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
-        except ValueError as e:
-            return Response(
-                {"detail": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            # Создаем и инициируем вывод средств
+            try:
+                withdrawal = WithdrawalService.create_and_initiate_withdrawal(
+                    contract_id=contract_id,
+                    payment_method_id=payment_method_id,
+                    payment_method_type=payment_method_type
+                )
+
+                # Возвращаем результат
+                return Response({
+                    "id": withdrawal.id,
+                    "status": withdrawal.status,
+                    "status_display": withdrawal.get_status_display(),
+                    "amount": str(withdrawal.amount),
+                    "created": withdrawal.created,
+                    "order_id": withdrawal.order_id,
+                    "error_message": withdrawal.error_message
+                }, status=status.HTTP_201_CREATED)
+
+            except ValueError as e:
+                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
             logger.error(f"Ошибка при создании вывода средств: {e}", exc_info=True)
             return Response(
-                {"detail": "Произошла ошибка при создании запроса на вывод средств."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-class WithdrawalStatusView(APIView):
-    """
-    API для проверки статуса вывода средств.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, withdrawal_id):
-        """
-        Получить текущий статус вывода средств.
-        """
-        withdrawal = get_object_or_404(CreditWithdrawal, id=withdrawal_id)
-
-        # Проверяем права доступа
-        if withdrawal.contract.borrower != request.user.person:
-            return Response(
-                {"detail": "У вас нет прав для просмотра этого вывода средств."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        # Возвращаем статус
-        return Response({
-            "id": withdrawal.id,
-            "status": withdrawal.status,
-            "status_display": withdrawal.get_status_display(),
-            "amount": str(withdrawal.amount),
-            "error_message": withdrawal.error_message,
-            "completed_at": withdrawal.completed_at
-        })
-
-
-class WithdrawalCallbackView(APIView):
-    """
-    Обработка колбэков от платежной системы по выводу средств.
-    """
-    permission_classes = []  # Колбэк не требует аутентификации
-
-    def post(self, request):
-        """
-        Обработать колбэк от платежной системы.
-        """
-        serializer = WithdrawalCallbackSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        # Извлекаем данные
-        order_id = serializer.validated_data.get('order_id')
-        status_code = serializer.validated_data.get('status')
-
-        # Обрабатываем колбэк
-        try:
-            success = WithdrawalService.process_callback(
-                order_id=order_id,
-                status=status_code,
-                data=serializer.validated_data
-            )
-
-            if success:
-                return Response({"status": "success"})
-            else:
-                return Response(
-                    {"detail": "Ошибка обработки колбэка"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        except Exception as e:
-            logger.error(f"Ошибка обработки колбэка: {e}", exc_info=True)
-            return Response(
-                {"detail": str(e)},
+                {"detail": "Произошла ошибка при обработке запроса"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

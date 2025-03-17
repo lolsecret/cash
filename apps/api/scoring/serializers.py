@@ -40,15 +40,14 @@ class CreditCreateMixinSerilizer(serializers.Serializer):
     #     write_only=True,
     # )
 
-    # cpa_transaction_id должен быть только один на лид. transaction_id - lead.su, admitad_uid - admitad
-    transaction_id = serializers.CharField(
-        source="cpa_transaction_id", write_only=True, required=False, allow_null=True,
+    cpa_transaction_id = serializers.CharField(
+        required=False, write_only=True, allow_null=True,
     )
-    admitad_uid = serializers.CharField(
-        source="cpa_transaction_id", write_only=True, required=False, allow_null=True,
+    wm_id = serializers.CharField(
+        required=False, write_only=True, allow_null=True,
     )
     utm_source = serializers.CharField(required=False, write_only=True, allow_null=True)
-    utm = serializers.DictField(required=False, write_only=True, allow_null=True)
+    # utm = serializers.DictField(required=False, write_only=True, allow_null=True)
 
     def create(self, validated_data: Dict[str, Any]) -> Lead:
         validated_data["product"] = Product.objects.get(id=config.LANDING_PRODUCT)

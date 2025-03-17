@@ -289,7 +289,12 @@ class Lead(TimeStampedModel, UUIDModel, ServiceHistoryMixin):
         null=True,
         blank=True
     )
-
+    wm_id = models.CharField(
+        "Webmaster id",
+        max_length=100,
+        null=True,
+        blank=True
+    )
     # utm метки
     utm_source = models.CharField(
         "UTM метка",

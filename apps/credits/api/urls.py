@@ -33,7 +33,7 @@ urlpatterns = [
 
     path('<int:pk>/print-forms/', views.PrintFormsView.as_view()),
 
-    path('products/<int:pk>/', views.ProductDetailView.as_view()),
+    path('products/<str:pk>/', views.ProductDetailView.as_view()),
     path('rejection-reasons/<int:pk>/', views.RejectionReasonDetailView.as_view()),
 
 

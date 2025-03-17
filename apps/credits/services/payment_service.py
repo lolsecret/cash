@@ -1,17 +1,20 @@
 import logging
+from decimal import Decimal
 
 from django.db.models import Q
+from django.utils import timezone
 
+from apps.accounts.models import BankCard, BankAccount
 from apps.credits import PaymentStatus, WithdrawalStatus
-from apps.credits.models import CreditApplicationPayment, CreditWithdrawal
+from apps.credits.models import CreditApplicationPayment, CreditWithdrawal, CreditContract
 from apps.flow.integrations.external.payment_gateway import (
     PaymentGatewayCreateForm,
     PaymentGatewayStatusCheck
 )
-from apps.flow.integrations.external.payment_withdraw import WithdrawalGatewayInitiate, \
-    WithdrawalGatewayTokenizeForm
+from apps.flow.integrations.external.payment_withdraw import WithdrawalBalanceCheck, DirectWithdrawalService
 from apps.flow.models import ExternalService
 from apps.flow.integrations.exceptions import ServiceErrorException, ServiceUnavailable
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -167,192 +170,169 @@ class PaymentService:
         )
         return service
 
-
 class WithdrawalService:
-    """
-    Сервис для управления процессом вывода средств.
-    """
+    """Сервис для управления выводом средств"""
 
     @classmethod
-    def create_tokenize_form(cls, contract_id):
+    def create_and_initiate_withdrawal(cls, contract_id, payment_method_id, payment_method_type):
         """
-        Создать заявку на вывод средств и форму для токенизации карты.
+        Создает и инициирует вывод средств для указанного контракта.
 
         Args:
-            contract_id: ID кредитного договора
+            contract_id: ID кредитного контракта
+            payment_method_id: ID платежного метода
+            payment_method_type: Тип платежного метода ('card' или 'account')
 
         Returns:
-            tuple: (CreditWithdrawal, URL формы токенизации)
-        """
-        from apps.credits.models import CreditContract
+            CreditWithdrawal: Созданная запись вывода средств
 
-        # Получаем кредитный договор
+        Raises:
+            ValueError: Если контракт не найден, не подписан или есть другие ошибки валидации
+            ServiceErrorException: Если произошла ошибка при обращении к платежной системе
+        """
+        # Получаем контракт
         try:
             contract = CreditContract.objects.get(id=contract_id)
         except CreditContract.DoesNotExist:
-            logger.error(f"Договор с ID {contract_id} не найден")
-            raise ValueError(f"Договор с ID {contract_id} не найден")
+            raise ValueError(f"Контракт с ID {contract_id} не найден")
 
-        # Проверяем, что договор подписан
+        # Проверяем, что контракт подписан
         if not contract.signed_at:
-            logger.error(f"Договор с ID {contract_id} не подписан")
-            raise ValueError(f"Нельзя создать вывод средств для неподписанного договора")
+            raise ValueError("Нельзя создать вывод средств для неподписанного контракта")
 
-        # Проверяем, есть ли уже активный вывод средств
+        # Проверяем наличие активного вывода средств
         active_withdrawal = CreditWithdrawal.objects.filter(
             contract=contract,
             status__in=[WithdrawalStatus.PENDING, WithdrawalStatus.PROCESSING]
         ).first()
 
-        if active_withdrawal and active_withdrawal.tokenize_form_url:
-            # Если уже есть активный вывод с URL формы, возвращаем его
-            return active_withdrawal, active_withdrawal.tokenize_form_url
+        if active_withdrawal:
+            raise ValueError("Для контракта уже существует активный запрос на вывод средств")
 
-        # Создаем новый вывод средств или используем существующий
-        withdrawal = active_withdrawal or CreditWithdrawal.objects.create(
+        # Получаем платежный метод
+        payment_method = None
+        if payment_method_type == 'card':
+            try:
+                payment_method = BankCard.objects.get(id=payment_method_id)
+            except BankCard.DoesNotExist:
+                raise ValueError(f"Банковская карта с ID {payment_method_id} не найдена")
+        elif payment_method_type == 'account':
+            try:
+                payment_method = BankAccount.objects.get(id=payment_method_id)
+            except BankAccount.DoesNotExist:
+                raise ValueError(f"Банковский счет с ID {payment_method_id} не найден")
+        else:
+            raise ValueError(f"Неверный тип платежного метода: {payment_method_type}")
+
+        # Проверяем баланс перед созданием вывода средств
+        if not cls._check_sufficient_balance(contract.params.principal):
+            raise ValueError("Недостаточно средств для вывода")
+
+        # Создаем новую запись вывода средств
+        withdrawal = CreditWithdrawal.objects.create(
             contract=contract,
-            amount=contract.params.principal
-        )
-
-        # Получаем сервис токенизации
-        service = ExternalService.objects.filter(
-            service_class__contains='WithdrawalGatewayTokenizeForm',
-            is_active=True
-        ).first()
-
-        if not service:
-            # Создаем сервис по умолчанию
-            service = cls._get_default_tokenize_form_service()
-
-        # Запускаем сервис
-        try:
-            service_instance = WithdrawalGatewayTokenizeForm(withdrawal, service_model=service)
-            service_instance.run_service()
-
-            if not withdrawal.tokenize_form_url:
-                raise ValueError("Не удалось получить URL формы токенизации")
-
-            return withdrawal, withdrawal.tokenize_form_url
-
-        except Exception as e:
-            logger.error(f"Ошибка при создании формы токенизации: {e}", exc_info=True)
-            withdrawal.fail(f"Ошибка: {str(e)}")
-            raise ValueError(f"Не удалось создать форму токенизации: {str(e)}")
-
-    @classmethod
-    def initiate_withdrawal_after_contract_sign(cls, contract_id):
-        """
-        Инициировать вывод средств после подписания договора.
-
-        Args:
-            contract_id: ID кредитного договора
-
-        Returns:
-            bool: True при успехе, False при ошибке
-        """
-        # Находим активный вывод средств для договора
-        withdrawals = CreditWithdrawal.objects.filter(
-            contract_id=contract_id,
+            amount=contract.params.principal,
             status=WithdrawalStatus.PENDING
         )
 
-        if not withdrawals.exists():
-            logger.warning(f"Не найден активный вывод средств для договора {contract_id}")
-            return False
+        # Инициируем вывод средств через сервис DirectWithdrawalService
+        try:
+            service = ExternalService.objects.filter(
+                service_class__contains='DirectWithdrawalService',
+                is_active=True
+            ).first()
 
-        withdrawal = withdrawals.first()
+            if not service:
+                service = cls._get_default_withdrawal_service()
 
-        # Проверяем наличие tokenize_transaction_id
-        if not withdrawal.tokenize_transaction_id:
-            logger.error(f"Для вывода #{withdrawal.id} нет ID транзакции токенизации")
-            return False
+            # Генерируем order_id для вывода средств, если он еще не создан
+            if not withdrawal.order_id:
+                withdrawal.generate_order_id()
+                withdrawal.save(update_fields=['order_id'])
 
-        # Получаем сервис инициализации вывода
+            withdrawal_service = DirectWithdrawalService(
+                withdrawal,
+                service_model=service,
+                payment_method=payment_method
+            )
+            withdrawal_service.run_service()
+
+            # Обновляем запись из базы данных
+            withdrawal.refresh_from_db()
+            return withdrawal
+
+        except Exception as e:
+            logger.error(f"Ошибка при инициировании вывода средств: {e}", exc_info=True)
+            withdrawal.status = WithdrawalStatus.FAILED
+            withdrawal.error_message = str(e)
+            withdrawal.save(update_fields=['status', 'error_message'])
+            raise
+
+    @classmethod
+    def _check_sufficient_balance(cls, amount):
+        """
+        Проверяет, достаточно ли средств для вывода указанной суммы.
+
+        Args:
+            amount: Сумма для вывода
+
+        Returns:
+            bool: True если достаточно средств, иначе False
+        """
         service = ExternalService.objects.filter(
-            service_class__contains='WithdrawalGatewayInitiate',
+            service_class__contains='WithdrawalBalanceCheck',
             is_active=True
         ).first()
 
         if not service:
-            service = cls._get_default_initiate_service()
+            service = cls._get_default_balance_service()
 
-        # Запускаем сервис
         try:
-            service_instance = WithdrawalGatewayInitiate(withdrawal, service_model=service)
-            service_instance.run_service()
+            # Создаем экземпляр сервиса для проверки баланса
+            balance_check = WithdrawalBalanceCheck(None, service_model=service)
+            result = balance_check.run_service()
 
-            # Проверяем статус после запуска
-            return withdrawal.status == WithdrawalStatus.PROCESSING
+            # Баланс в центах, переводим в Decimal
+            available_balance = Decimal(result.get('balance', 0)) / 100
+
+            logger.info(f"Проверка баланса: доступно {available_balance}, требуется {amount}")
+
+            return available_balance >= amount
 
         except Exception as e:
-            logger.error(f"Ошибка при инициировании вывода средств {withdrawal.id}: {e}", exc_info=True)
-            withdrawal.fail(f"Ошибка: {str(e)}")
+            logger.error(f"Ошибка при проверке баланса: {e}", exc_info=True)
+            # В случае ошибки считаем, что баланс недостаточен
             return False
 
     @classmethod
-    def process_callback(cls, order_id, status, data):
-        """
-        Обработать колбэк от платежной системы.
-
-        Args:
-            order_id: ID заказа
-            status: Статус операции
-            data: Все данные колбэка
-
-        Returns:
-            bool: True при успешной обработке
-        """
-        try:
-            withdrawal = CreditWithdrawal.objects.get(order_id=order_id)
-        except CreditWithdrawal.DoesNotExist:
-            logger.error(f"Вывод средств с order_id={order_id} не найден")
-            return False
-
-        # Сохраняем данные колбэка
-        withdrawal.withdrawal_response = {
-            **(withdrawal.withdrawal_response or {}),
-            "callback_data": data
-        }
-
-        # Обновляем статус
-        if status == 2:  # Успешно завершен
-            withdrawal.complete()
-            logger.info(f"Вывод средств #{withdrawal.id} успешно завершен")
-        elif status == -1:  # Ошибка
-            error_message = data.get("err") or "Ошибка при обработке вывода средств"
-            withdrawal.fail(error_message)
-            logger.error(f"Ошибка вывода средств #{withdrawal.id}: {error_message}")
-        else:
-            # Оставляем в процессе обработки
-            logger.info(f"Вывод средств #{withdrawal.id} в процессе, статус {status}")
-
-        withdrawal.save(update_fields=['withdrawal_response'])
-        return True
-
-    # Вспомогательные методы
-
-    @classmethod
-    def _get_default_tokenize_form_service(cls):
-        """Создать конфигурацию сервиса по умолчанию для формы токенизации."""
+    def _get_default_balance_service(cls):
+        """Создает конфигурацию сервиса по умолчанию для проверки баланса."""
         service, created = ExternalService.objects.get_or_create(
-            name="Default Withdrawal Tokenize Form Service",
-            service_class="apps.flow.integrations.external.withdrawal_gateway.WithdrawalGatewayTokenizeForm",
+            name="Default Withdrawal Balance Service",
+            service_class="apps.flow.integrations.external.withdrawal_gateway.WithdrawalBalanceCheck",
             defaults={
-                "address": "https://api-gateway.smartcore.pro/withdrawal/tokenize-form",
-                "is_active": True
+                "address": "https://api-gateway.smartcore.pro/withdrawal/balance/get",
+                "is_active": True,
+                "params": {
+                    "withdrawal_account": getattr(settings, "WITHDRAWAL_ACCOUNT", "EUR-sandbox")
+                }
             }
         )
         return service
 
     @classmethod
-    def _get_default_initiate_service(cls):
-        """Создать конфигурацию сервиса по умолчанию для инициирования вывода."""
+    def _get_default_withdrawal_service(cls):
+        """Создает конфигурацию сервиса по умолчанию для вывода средств."""
         service, created = ExternalService.objects.get_or_create(
-            name="Default Withdrawal Initiate Service",
-            service_class="apps.flow.integrations.external.withdrawal_gateway.WithdrawalGatewayInitiate",
+            name="Default Direct Withdrawal Service",
+            service_class="apps.flow.integrations.external.withdrawal_gateway.DirectWithdrawalService",
             defaults={
                 "address": "https://chd-api.smartcore.pro/withdrawal/init",
-                "is_active": True
+                "is_active": True,
+                "params": {
+                    "withdrawal_account": getattr(settings, "WITHDRAWAL_ACCOUNT", "EUR-sandbox"),
+                    "merchant_site": getattr(settings, "MERCHANT_SITE_URL", "https://merchant.site")
+                }
             }
         )
         return service

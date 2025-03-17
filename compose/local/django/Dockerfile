@@ -15,12 +15,12 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   # psycopg2 dependencies
   libpq-dev
 
-# Requirements are installed here to ensure they will be cached.
-COPY ./requirements .
+# Копируем ТОЛЬКО requirements директорию для лучшего кеширования
+COPY ./requirements ./requirements
 
 # Create Python Dependency and Sub-Dependency Wheels.
 RUN pip wheel --wheel-dir /usr/src/app/wheels  \
-  -r ${BUILD_ENVIRONMENT}.txt
+  -r requirements/${BUILD_ENVIRONMENT}.txt
 
 
 # Python 'run' stage
@@ -51,7 +51,7 @@ COPY --from=python-build-stage /usr/src/app/wheels  /wheels/
 
 # use wheels to install python dependencies
 RUN pip install --no-cache-dir --no-index --find-links=/wheels/ /wheels/* \
-	&& rm -rf /wheels/
+    && rm -rf /wheels/
 
 COPY ./compose/production/django/entrypoint /entrypoint
 RUN sed -i 's/\r$//g' /entrypoint
@@ -60,7 +60,6 @@ RUN chmod +x /entrypoint
 COPY ./compose/local/django/start /start
 RUN sed -i 's/\r$//g' /start
 RUN chmod +x /start
-
 
 COPY ./compose/local/django/celery/worker/start /start-celeryworker
 RUN sed -i 's/\r$//g' /start-celeryworker
@@ -73,7 +72,6 @@ RUN chmod +x /start-celerybeat
 COPY ./compose/local/django/celery/flower/start /start-flower
 RUN sed -i 's/\r$//g' /start-flower
 RUN chmod +x /start-flower
-
 
 # copy application code to WORKDIR
 COPY . ${APP_HOME}
