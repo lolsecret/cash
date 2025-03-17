@@ -1,0 +1,14 @@
+{
+  "person_id": "test0811",
+  "result": {
+    "service_name": "kisc",
+    "service_status": "success",
+    "face_match": true,
+    "similarity": 99.0,
+    "vendor": "verigram"
+  },
+  "files": {
+    "kisc_pii": "@kisc_pii.txt",
+    "kisc_face_image": "@image.jpg"
+  }
+}

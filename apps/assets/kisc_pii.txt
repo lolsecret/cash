@@ -1,0 +1,1 @@
+{"person": {"name": "\u0418\u0412\u0410\u041d", "patronymic": "\u0418\u0412\u0410\u041d\u041e\u0412\u0418\u0427", "surname": "\u0418\u0412\u0410\u041d\u041e\u0412", "iin": "970909300351", "mobilephone": "", "birthDate": "1990-01-01", "gender": {"nameRu": "\u041c\u0443\u0436\u0441\u043a\u043e\u0439", "code": "1"}}}
