@@ -938,7 +938,7 @@ class CreditSigningViewSet(GenericViewSet):
     def init_signing(self, request, pk=None):
         """Инициализация процесса подписания кредитной заявки"""
 
-        credit = get_object_or_404(CreditApplication, pk=pk)
+        credit = get_object_or_404(CreditApplication, pk=pk, borrower=request.user.person)
 
         try:
             # Находим активный сервис Verigram
@@ -1009,8 +1009,9 @@ class CreditSigningViewSet(GenericViewSet):
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def callback(self, request, pk=None):
         """Обработчик вебхуков от Verigram Flow"""
+        print(f'callback verigram flow: {request.data}')
         try:
-            credit = get_object_or_404(CreditApplication, pk=pk)
+            credit = get_object_or_404(CreditApplication, pk=pk, borrower=request.user.person)
             flow_id = credit.verigram_flow_id
 
             if not flow_id:
@@ -1056,7 +1057,8 @@ class CreatePaymentView(CreateAPIView):
         # Fetch the credit application or return 404
         credit_application = get_object_or_404(
             CreditApplication,
-            pk=credit_application_id
+            pk=credit_application_id,
+            borrower=request.user.person
         )
 
         # Validate that the user has permission to make a payment on this application
@@ -1233,49 +1235,51 @@ class WithdrawalCreateView(APIView):
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['payment_method_id', 'payment_method_type'],
+            required=['payment_method_id'],
             properties={
-                'payment_method_id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                'payment_method_type': openapi.Schema(type=openapi.TYPE_STRING, enum=['card', 'account'])
+                'payment_method_id': openapi.Schema(type=openapi.TYPE_INTEGER)
             }
         ),
-        responses={201: 'Вывод средств создан'}
+        responses={201: WithdrawalSerializer(many=False)}
     )
     def post(self, request, contract_id):
         """
-        Создает и инициирует вывод средств для указанного контракта.
+        Создает и инициирует вывод средств для указанного контракта на карту.
 
         Request body:
         {
-            "payment_method_id": 123,  # ID платежного метода
-            "payment_method_type": "card"  # Тип платежного метода ('card' или 'account')
+            "payment_method_id": 123  # ID банковской карты
         }
         """
         try:
-            # Получаем данные из запроса
+            # Получаем ID карты из запроса
             payment_method_id = request.data.get('payment_method_id')
-            payment_method_type = request.data.get('payment_method_type')
 
-            if not payment_method_id or not payment_method_type:
+            if not payment_method_id:
                 return Response(
-                    {"detail": "Необходимо указать payment_method_id и payment_method_type"},
+                    {"detail": "Необходимо указать payment_method_id"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             # Проверяем, что контракт принадлежит пользователю
-            contract = get_object_or_404(CreditContract, id=contract_id)
+            contract = get_object_or_404(CreditContract, id=contract_id, borrower=request.user.person)
             if contract.borrower != request.user.person:
                 return Response(
                     {"detail": "У вас нет прав для вывода средств по этому контракту"},
                     status=status.HTTP_403_FORBIDDEN
                 )
 
+            # Получаем personal_record пользователя для проверки карты
+            personal_record = getattr(request.user, 'personal_record', None)
+            if not personal_record:
+                logger.warning(f"У пользователя {request.user.id} отсутствует personal_record")
+
             # Создаем и инициируем вывод средств
             try:
                 withdrawal = WithdrawalService.create_and_initiate_withdrawal(
                     contract_id=contract_id,
                     payment_method_id=payment_method_id,
-                    payment_method_type=payment_method_type
+                    personal_record=personal_record
                 )
 
                 # Возвращаем результат

@@ -147,7 +147,10 @@ class DirectWithdrawalService(BaseService, Fetcher):
         if status_code == 2:
             self.instance.status = WithdrawalStatus.COMPLETED
             self.instance.completed_at = timezone.now()
-            self.instance.contract.credit.issued()
+            credit = self.instance.contract.credit
+            credit.issued()
+            credit.save()
+
             logger.info(f"Вывод средств {self.instance.id} успешно выполнен и помечен как выданный")
         elif status_code == 1:  # В обработке
             self.instance.status = WithdrawalStatus.PROCESSING
@@ -158,5 +161,4 @@ class DirectWithdrawalService(BaseService, Fetcher):
             logger.error(f"Ошибка вывода средств {self.instance.id}: {self.instance.error_message}")
 
         self.instance.save()
-
         return response

@@ -76,7 +76,7 @@ class CreditFastCreateAPIViewSerializer(CreditCreateMixinSerilizer):
         if lead.credit_params.principal not in lead.product.principal_limits:
             lead.reject(_("Указанная сумма не подходит по параметрам"))
 
-        if lead.credit_params.period != lead.product.period:
+        if lead.credit_params.period > lead.product.period:
             lead.reject(_("Указанный период не подходит по параметрам"))
 
         if lead.rejected:

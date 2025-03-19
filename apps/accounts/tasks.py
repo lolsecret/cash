@@ -1,12 +1,13 @@
 import io
-
+import logging
 from PyPDF2 import PdfReader
 from celery import shared_task
 
 from .models import ProfilePersonalRecord
 from .services import AccountService
-from ..api.user.auth.utils import KaspiBankStatementParser
+from ..api.user.auth.simplified_parser import KaspiBankStatementParser, BankStatementValidationError
 
+logger = logging.getLogger(__name__)
 
 @shared_task
 def update_client_info(**kwargs):
@@ -36,20 +37,37 @@ def process_bank_statement(personal_record_id, file_path):
             for page in reader.pages:
                 text += page.extract_text()
 
+        # Инициализируем парсер и проверяем, что это действительно выписка
+        try:
+            parser = KaspiBankStatementParser(text)
+            parser.validate_statement()
+        except BankStatementValidationError as e:
+            logger.error(f"Validation error for bank statement: {e}")
+            # Сообщаем пользователю об ошибке
+            raise ValueError("Загруженный документ не является банковской выпиской Kaspi")
+
         # Анализируем выписку
-        parser = KaspiBankStatementParser(text)
         result = parser.parse()
 
         # Сохраняем результаты
         personal_record.average_monthly_income = result['average_monthly_income']
         personal_record.income_calculated_at = result['calculation_date']
+        personal_record.bank_statement_card_number = result.get('card_number')
+
+        # Сохраняем обновления
         personal_record.save(update_fields=[
             'average_monthly_income',
             'income_calculated_at',
+            'bank_statement_card_number',
         ])
 
-    except Exception as e:
+        return True
 
+    except BankStatementValidationError as e:
+        logger.error(f"Ошибка валидации выписки: {e}")
+        raise ValueError(str(e))
+
+    except Exception as e:
         # Логгирование ошибки
-        print(f"Ошибка при обработке выписки: {e}")
-        # В продакшн здесь должен быть вызов logger.error()
+        logger.error(f"Ошибка при обработке выписки: {e}", exc_info=True)
+        raise ValueError(f"Произошла ошибка при обработке: {str(e)}")

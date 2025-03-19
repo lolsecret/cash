@@ -1,4 +1,7 @@
 import logging
+import base64
+import uuid
+from django.core.files.base import ContentFile
 
 from apps.accounts.models import Profile, ProfilePersonalRecord
 from apps.flow.integrations.base import BaseService
@@ -63,6 +66,31 @@ class PKBGBDFL(BaseService, DataLoader):
             data['profile'] = self.instance.profile.id
         return data
 
+    def save_document_photo(self, photo_base64, instance):
+        """
+        Сохраняет изображение документа из base64 в поле document_photo
+        """
+        if not photo_base64:
+            return
+
+        try:
+            if "base64," in photo_base64:
+                photo_base64 = photo_base64.split("base64,")[1]
+
+            photo_binary = base64.b64decode(photo_base64)
+
+            filename = f"document_{uuid.uuid4()}.jpg"
+
+            instance.document_photo.save(
+                filename,
+                ContentFile(photo_binary),
+                save=True
+            )
+
+            logger.info(f"Фото документа успешно сохранено для пользователя {instance.profile.id}")
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении фото документа: {e}")
+
     def save(self, data):
         super().save(prepared_data=self.prepared_data(data))
 
@@ -74,6 +102,9 @@ class PKBGBDFL(BaseService, DataLoader):
             profile = self.instance.profile
             profile.first_name = self.instance.first_name
             profile.last_name = self.instance.last_name
+
+            if "photo" in data:
+                self.save_document_photo(data["photo"], self.instance)
 
             profile.save(update_fields=['first_name', 'last_name'])
         person.save(update_fields=['gender'])

@@ -215,7 +215,12 @@ class ProfilePersonalRecord(TimeStampedModel, PersonNameMixin, ServiceHistoryMix
         null=True,
         blank=True
     )
-
+    bank_statement_card_number = models.CharField(
+        "Последние 4 цифры карты из выписки",
+        max_length=4,
+        blank=True,
+        null=True,
+    )
     bank = models.ForeignKey(Bank, on_delete=models.SET_NULL, null=True, blank=True)
 
     # Работа

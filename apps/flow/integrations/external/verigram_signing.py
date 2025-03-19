@@ -300,7 +300,7 @@ class VeragramSigning(Fetcher, BaseService):
             logger.info(f"KISC mock created: {mock_result}")
 
             # Создаем Flow для подписания
-            callback_url = f"{settings.BASE_URL}/credits/api/signing/callback/{self.instance.pk}/"
+            callback_url = f"{settings.BASE_URL}/credits/signing/{self.instance.pk}/callback/"
             flow_result = self.create_flow(callback_url, files)
 
             # Сохраняем ссылку на Flow и Flow ID
@@ -360,7 +360,7 @@ class VeragramSigning(Fetcher, BaseService):
             credit_doc.document.save(f"signed_contract_{credit.pk}.pdf", document_file)
             # Обновляем статус кредитной заявки
             # credit.sign_with_otp(otp="verigram")
-            # credit.to_issuance(signed_at=timezone.now().date(), otp="verigram")
+            credit.to_issuance(signed_at=timezone.now().date(), otp="verigram")
             # credit.save()
 
             return True

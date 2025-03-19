@@ -170,18 +170,47 @@ class PaymentService:
         )
         return service
 
+
 class WithdrawalService:
     """Сервис для управления выводом средств"""
 
     @classmethod
-    def create_and_initiate_withdrawal(cls, contract_id, payment_method_id, payment_method_type):
+    def validate_card_with_statement(cls, personal_record, card):
+        """
+        Проверяет соответствие карты данным из банковской выписки.
+
+        Args:
+            personal_record: Личные данные пользователя с информацией из выписки
+            card: Банковская карта для вывода средств
+
+        Raises:
+            ValueError: Если проверка не прошла
+        """
+        # Пропускаем проверку, если в выписке нет информации о карте
+        if not personal_record.bank_statement_card_number:
+            logger.warning("Пропуск проверки карты - отсутствует информация о карте в выписке")
+            return True
+
+        # Проверяем соответствие последних 4 цифр
+        card_last_digits = card.card_number[-4:]
+        if card_last_digits != personal_record.bank_statement_card_number:
+            logger.error(
+                f"Несоответствие последних 4 цифр карты: в выписке {personal_record.bank_statement_card_number}, на карте {card_last_digits}")
+            raise ValueError(
+                f"Последние 4 цифры карты ({card_last_digits}) не совпадают с данными в банковской выписке ({personal_record.bank_statement_card_number})"
+            )
+
+        return True
+
+    @classmethod
+    def create_and_initiate_withdrawal(cls, contract_id, payment_method_id, personal_record=None):
         """
         Создает и инициирует вывод средств для указанного контракта.
 
         Args:
             contract_id: ID кредитного контракта
-            payment_method_id: ID платежного метода
-            payment_method_type: Тип платежного метода ('card' или 'account')
+            payment_method_id: ID платежного метода (карты)
+            personal_record: Личные данные пользователя (опционально)
 
         Returns:
             CreditWithdrawal: Созданная запись вывода средств
@@ -206,23 +235,19 @@ class WithdrawalService:
             status__in=[WithdrawalStatus.PENDING, WithdrawalStatus.PROCESSING]
         ).first()
 
-        if active_withdrawal:
-            raise ValueError("Для контракта уже существует активный запрос на вывод средств")
+        # if active_withdrawal:
+        #     raise ValueError("Для контракта уже существует активный запрос на вывод средств")
 
-        # Получаем платежный метод
-        payment_method = None
-        if payment_method_type == 'card':
-            try:
-                payment_method = BankCard.objects.get(id=payment_method_id)
-            except BankCard.DoesNotExist:
-                raise ValueError(f"Банковская карта с ID {payment_method_id} не найдена")
-        elif payment_method_type == 'account':
-            try:
-                payment_method = BankAccount.objects.get(id=payment_method_id)
-            except BankAccount.DoesNotExist:
-                raise ValueError(f"Банковский счет с ID {payment_method_id} не найден")
-        else:
-            raise ValueError(f"Неверный тип платежного метода: {payment_method_type}")
+        # Получаем платежный метод (карту)
+        try:
+            payment_method = BankCard.objects.get(id=payment_method_id)
+
+            # Проверяем соответствие карты данным из выписки, если передан personal_record
+            if personal_record:
+                cls.validate_card_with_statement(personal_record, payment_method)
+
+        except BankCard.DoesNotExist:
+            raise ValueError(f"Банковская карта с ID {payment_method_id} не найдена")
 
         # Проверяем баланс перед созданием вывода средств
         if not cls._check_sufficient_balance(contract.params.principal):

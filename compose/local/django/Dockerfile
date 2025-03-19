@@ -22,6 +22,14 @@ COPY ./requirements ./requirements
 RUN pip wheel --wheel-dir /usr/src/app/wheels  \
   -r requirements/${BUILD_ENVIRONMENT}.txt
 
+# Устанавливаем wkhtmltopdf и зависимости на этапе сборки
+RUN apt-get update && apt-get install -y \
+    wkhtmltopdf \
+    libxrender1 \
+    libfontconfig1 \
+    libx11-dev \
+    xvfb \
+    && rm -rf /var/lib/apt/lists/*
 
 # Python 'run' stage
 FROM python as python-run-stage
@@ -41,6 +49,12 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   libpq-dev \
   # Translations dependencies
   gettext \
+  # Устанавливаем wkhtmltopdf и его зависимости в финальном образе
+  wkhtmltopdf \
+  libxrender1 \
+  libfontconfig1 \
+  libx11-dev \
+  xvfb \
   # cleaning up unused files
   && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
   && rm -rf /var/lib/apt/lists/*

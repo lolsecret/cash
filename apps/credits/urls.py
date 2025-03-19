@@ -28,10 +28,10 @@ urlpatterns = [
     path('<int:pk>/remove-files/', views.CreditRemoveFileView.as_view(), name='remove-files'),
     path('<int:pk>/credit-vote/', views.CreditVoteView.as_view(), name='credit-vote'),
 
-    path('<int:pk>/guarantors/', views.GuarantorView.as_view(), name='guarantor-create'),
-    path('<int:credit_pk>/guarantors/new/', views.GuarantorCreateView.as_view(), name='guarantor-create'),
-    path('<int:credit_pk>/guarantors/<int:pk>/edit/', views.GuarantorUpdateView.as_view(), name='guarantor-edit'),
-    path('<int:credit_pk>/guarantors/<int:pk>/delete/', views.GuarantorDeleteView.as_view(), name='guarantor-delete'),
+    # path('<int:pk>/guarantors/', views.GuarantorView.as_view(), name='guarantor-create'),
+    # path('<int:credit_pk>/guarantors/new/', views.GuarantorCreateView.as_view(), name='guarantor-create'),
+    # path('<int:credit_pk>/guarantors/<int:pk>/edit/', views.GuarantorUpdateView.as_view(), name='guarantor-edit'),
+    # path('<int:credit_pk>/guarantors/<int:pk>/delete/', views.GuarantorDeleteView.as_view(), name='guarantor-delete'),
 
     path('<int:pk>/print-form/<str:form_name>.html', views.print_forms_view, name='credit-print-form'),
     path('<int:pk>/print-form/<str:form_name>.pdf', views.print_forms_pdf_view, name='credit-print-form-pdf'),

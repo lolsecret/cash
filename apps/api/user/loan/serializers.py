@@ -96,6 +96,7 @@ class CreditContractSerializer(serializers.ModelSerializer):
             'repayment_method',
             'credit_id',
             'print_forms',
+            'id'
         )
         read_only_fields = fields
 
@@ -158,6 +159,7 @@ class ProfileCreditApplicationSerializer(serializers.ModelSerializer):
     approved_params = serializers.SerializerMethodField(read_only=True)
     status = serializers.CharField(source="get_status_display")
     print_forms = serializers.SerializerMethodField()
+    contract_id = serializers.SerializerMethodField()
 
     class Meta:
         model = CreditApplication
@@ -167,8 +169,12 @@ class ProfileCreditApplicationSerializer(serializers.ModelSerializer):
             'created',
             'id',
             'print_forms',
+            'contract_id'
         )
         read_only_fields = fields
+
+    def get_contract_id(self, obj):
+        return obj.contract.id if hasattr(obj, "contract") else ""
 
     def update(self, instance: CreditContract, validated_data):
         params = instance.params
